@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>结算页</title>
+  <style>
+    body { margin: 48px; background: #f7f7f5; color: #222; font-family: "PingFang SC", sans-serif; }
+    h1 { font-size: 28px; font-weight: 600; }
+    button.buy {
+      width: 120px;
+      height: 40px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      background: #2457c5;
+      border: 0;
+      border-radius: 8px;
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      margin-top: 20px;
+      border: 3px solid #dcdcdc;
+      border-top-color: #2457c5;
+      border-radius: 50%;
+      animation: spin 900ms linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <h1>结算</h1>
+  <button class="buy" id="buy">购买</button>
+  <div class="spinner" id="spinner"></div>
+</body>
+</html>

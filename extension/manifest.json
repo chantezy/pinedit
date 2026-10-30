@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "PinEdit",
+  "version": "0.1.0",
+  "description": "在当前页面点出要改的元素，连同真实尺寸交给本地 AI。",
+  "action": {
+    "default_title": "PinEdit",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1:4737/*", "file:///*"],
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}
