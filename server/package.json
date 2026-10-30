@@ -1,6 +1,6 @@
 {
   "name": "pinedit-mcp",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "PinEdit 本机 MCP：读取浏览器标注（元素、圈选文字、选区）与修改意见。",
   "repository": {
     "type": "git",
