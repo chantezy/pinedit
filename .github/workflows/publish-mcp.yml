@@ -1,0 +1,56 @@
+name: Publish pinedit-mcp (Trusted Publisher)
+
+# npm Trusted Publishing（OIDC，无需 NODE_AUTH_TOKEN）
+# https://docs.npmjs.com/trusted-publishers
+#
+# npm 包页 → Settings → Trusted Publisher → GitHub Actions：
+#   Organization or user: chantezy
+#   Repository: pinedit
+#   Workflow filename: publish-mcp.yml   （须与文件名完全一致，含 .yml）
+#
+# GitHub 仓库 → Settings → Actions → General → Workflow permissions：
+#   Read and write permissions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install & test
+        run: cd server && npm ci && npm test
+
+      - name: Bump patch version
+        run: cd server && npm version patch --no-git-tag-version
+
+      - name: Publish to npm (OIDC)
+        run: cd server && npm publish --access public
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server/package.json server/package-lock.json
+          git commit -m "chore: bump pinedit-mcp version [skip ci]" || true
+          git push

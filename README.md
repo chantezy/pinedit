@@ -113,25 +113,22 @@ MCP 服务改在 `server/` 里发 npm：`cd server && npm publish`（先跑测�
 
 ## Edge 附加商店
 
-可以上架。这套插件已经按审核习惯收过一遍，但现在还不能直接提交。
+**当前状态：** [Partner Center](https://partner.microsoft.com/dashboard/microsoftedge/public/login) 已提交 **0.1.1**，审核通过后商店会自动向已安装用户推送。本地 zip 与 GitHub Release 见上文「发版」。
 
-已经对齐的部分：
+**下次改插件要上架时：**
 
-- Manifest V3。Edge 附加商店不收新的 V2。
-- 单一用途：给当前页做标注，交给本机 AI。
-- 权限只有 `activeTab`、`scripting`、`storage`，外加 `http://127.0.0.1:4737/*`。不申请全站权限，只有你点了图标的那个标签页才会注入。
-- 没有远程代码，字体和图标都在包里。
-- 数据只进本机文件。隐私说明在官网仓库的 `store/PRIVACY.md`。
+1. 改 `extension/manifest.json` 的版本号，执行 `node scripts/package-extension.mjs`。
+2. 把生成的 `pinedit-<版本>.zip` 上传到 Partner Center 新版本，并同步 [GitHub Releases](https://github.com/chantezy/pinedit/releases)（附件名与 manifest 一致）。
+3. 若改了 `description` 或权限，商店文案/隐私说明也要一起改，否则可能被拒。
 
-提交前还要补：
+商店素材约定（首版已填过，大改时再核对）：
 
-- 注册 [Partner Center](https://partner.microsoft.com/dashboard/microsoftedge/public/login) 的 Edge 扩展开发者账号。
-- 商店描述至少 250 字，短说明用 manifest 里的 `description`，改文案就要重新传 zip。
-- 图标用官网仓库 `store/logo-300.png`（300×300，跑 `node scripts/make-icons.mjs` 会生成到那里）。截图要 1280×800 或 640×480，最多 6 张，需要你在 Edge 里实际标一次再截。
-- 隐私页要填：单一用途、每个权限的理由、声明没有远程代码、数据用途。因为会读取页面上的文字和地址，需要一个公网可打开的隐私政策链接，指向官网上的隐私说明。
-- 打包：`node scripts/package-extension.mjs /tmp/pinedit-<版本>.zip`，上传到 GitHub Release，附件名与 manifest 版本一致，例如 `pinedit-0.1.1.zip`
+- 图标：官网仓库 `store/logo-300.png`（300×300，`node scripts/make-icons.mjs` 会生成到那里）。
+- 截图：1280×800 或 640×480，最多 6 张。
+- 隐私政策：公网链接指向官网上的说明（源文件 `website/store/PRIVACY.md`）。
+- 合规要点：Manifest V3、单一用途（页面标注交给本机 AI）、无远程代码、数据仅本机 MCP；权限见下表。
 
-权限理由可以照这几句填：
+权限理由（Partner Center 可照抄）：
 
 | 权限 | 理由 |
 | --- | --- |

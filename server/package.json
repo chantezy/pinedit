@@ -10,7 +10,7 @@
   "homepage": "https://github.com/chantezy/pinedit",
   "type": "module",
   "bin": {
-    "pinedit-mcp": "./index.js"
+    "pinedit-mcp": "index.js"
   },
   "files": [
     "index.js",
@@ -25,6 +25,9 @@
     "browser"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
