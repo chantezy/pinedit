@@ -1,4 +1,5 @@
 (() => {
+if (document.querySelector("pinedit-root")) return;
 const API_MESSAGE = "pinedit:http";
 const MCP_FALLBACK = `{
   "mcpServers": {
@@ -35,6 +36,7 @@ const state = {
   dragEndedAt: 0,
   clickFromDrag: false,
   eatPageClick: false,
+  pickingText: false,
   cardRect: null,
 };
 
@@ -163,13 +165,14 @@ const tip = el("div", "tip");
 const badge = el("span", "badge", "1");
 frame.append(tip, badge);
 const pinLayer = el("div", "pins");
+const textLayer = el("div", "text-layer");
 const card = el("div", "card");
 card.hidden = true;
 const regionLayer = el("div", "region-layer");
 regionLayer.hidden = true;
 const regionPreview = el("div", "region");
 regionPreview.hidden = true;
-shadow.append(anchor, frame, pinLayer, regionLayer, regionPreview, card, toast);
+shadow.append(anchor, frame, textLayer, pinLayer, regionLayer, regionPreview, card, toast);
 document.documentElement.append(host);
 host.hidden = true;
 
@@ -300,8 +303,34 @@ syncLabels();
 
 globalThis.__PINEDIT__ = {
   toggle: () => setOpen(!state.open),
+  activate: () => setOpen(!state.open || state.collapsed),
+  openChip: () => openChip(),
+  enterToolbar: () => {
+    if (!state.open) setOpen(true);
+    else if (state.collapsed) collapse(false);
+  },
   animations: () => pageAnimations().length,
 };
+
+function openChip() {
+  state.open = true;
+  host.hidden = false;
+  clearInterval(animTimer);
+  closeMenu();
+  state.listOpen = false;
+  setRegionMode(false);
+  hideFrame();
+  closeCard();
+  state.collapsed = true;
+  dock.hidden = true;
+  chip.hidden = false;
+  refreshAnimations();
+  render();
+  animTimer = setInterval(() => {
+    refreshAnimations();
+    schedulePins();
+  }, 1200);
+}
 
 function setOpen(next) {
   state.open = next;
@@ -519,8 +548,8 @@ function toggleAnimations() {
 }
 
 function onMove(event) {
-  if (state.adjustingRegion || state.dragging || state.regionMode || !card.hidden || !state.open || state.collapsed || isOurs(event)) {
-    if (card.hidden) hideFrame();
+  if (state.pickingText || state.adjustingRegion || state.dragging || state.regionMode || !card.hidden || !state.open || state.collapsed || isOurs(event)) {
+    if (card.hidden && !state.pickingText) hideFrame();
     return;
   }
   if (!state.marksVisible) {
@@ -546,12 +575,52 @@ function onDown(event) {
   }
   if (!state.open || state.collapsed || state.regionMode || isOurs(event)) return;
   if (event.button !== 0) return;
+  if (!card.hidden) {
+    event.preventDefault();
+    event.stopPropagation();
+    state.eatPageClick = true;
+    shakeCard();
+    return;
+  }
   const target = elementAt(event.clientX, event.clientY);
   if (!target) return;
   event.preventDefault();
   event.stopPropagation();
   state.eatPageClick = true;
-  openCard(target);
+  const start = { x: event.clientX, y: event.clientY };
+  let dragged = false;
+  let point = start;
+  state.pickingText = true;
+  const move = (next) => {
+    point = { x: next.clientX, y: next.clientY };
+    if (!dragged && Math.hypot(point.x - start.x, point.y - start.y) < 6) return;
+    dragged = true;
+    next.preventDefault();
+    hideFrame();
+    const picked = textAtDrag(start, point);
+    paintTextHighlights(picked?.range || null);
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("pointerup", up, true);
+    window.removeEventListener("pointercancel", up, true);
+    state.pickingText = false;
+    if (!dragged) {
+      clearTextHighlight();
+      openCard(target);
+      return;
+    }
+    const picked = textAtDrag(start, point);
+    if (!picked) {
+      clearTextHighlight();
+      setStatus("这里没有可选的文字。");
+      return;
+    }
+    openTextCard(picked);
+  };
+  window.addEventListener("pointermove", move, true);
+  window.addEventListener("pointerup", up, true);
+  window.addEventListener("pointercancel", up, true);
 }
 
 function onRegionDown(event) {
@@ -630,24 +699,158 @@ function openRegion(pageRect, viewRect) {
 }
 
 function openCard(target) {
+  clearTextHighlight();
   const snapshot = capture(target);
   const rect = target.getBoundingClientRect();
   showCard(snapshot, rect, describe(target, snapshot.text), snapshot.selector);
 }
 
+function openTextCard(picked) {
+  liveRange = picked.range;
+  const snapshot = capture(picked.element);
+  const quote = picked.text;
+  snapshot.kind = "文字";
+  snapshot.text = quote;
+  snapshot.quote = quote;
+  snapshot.box = {
+    ...snapshot.box,
+    width: Math.round(picked.rect.width),
+    height: Math.round(picked.rect.height),
+  };
+  snapshot.quoteRect = {
+    x: Math.round(picked.rect.left + window.scrollX),
+    y: Math.round(picked.rect.top + window.scrollY),
+    width: Math.round(picked.rect.width),
+    height: Math.round(picked.rect.height),
+  };
+  paintTextHighlights(picked.range);
+  showCard(snapshot, picked.rect, quoteLabel(quote), snapshot.selector);
+}
+
+function quoteLabel(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clipped = clean.length > 24 ? `${clean.slice(0, 24)}…` : clean;
+  return `「${clipped}」`;
+}
+
+let liveRange = null;
+
+function textAtDrag(from, to) {
+  const range = rangeBetween(from, to);
+  if (!range) return null;
+  const text = range.toString().replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!text) return null;
+  const element = elementForRange(range);
+  if (!element) return null;
+  const rect = range.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
+  return { range, text, element, rect };
+}
+
+function rangeBetween(from, to) {
+  const start = caretAt(from.x, from.y);
+  const end = caretAt(to.x, to.y);
+  if (!start || !end) return null;
+  if (insideHost(start.startContainer) || insideHost(end.startContainer)) return null;
+  const range = document.createRange();
+  try {
+    if (start.compareBoundaryPoints(Range.START_TO_START, end) <= 0) {
+      range.setStart(start.startContainer, start.startOffset);
+      range.setEnd(end.startContainer, end.startOffset);
+    } else {
+      range.setStart(end.startContainer, end.startOffset);
+      range.setEnd(start.startContainer, start.startOffset);
+    }
+  } catch {
+    return null;
+  }
+  return range;
+}
+
+function caretAt(x, y) {
+  const direct = readCaret(x, y);
+  if (direct && !insideHost(direct.startContainer)) return direct;
+  const previous = host.style.visibility;
+  host.style.visibility = "hidden";
+  const hidden = readCaret(x, y);
+  host.style.visibility = previous;
+  if (!hidden || insideHost(hidden.startContainer)) return null;
+  return hidden;
+}
+
+function readCaret(x, y) {
+  if (typeof document.caretRangeFromPoint === "function") return document.caretRangeFromPoint(x, y);
+  const pos = document.caretPositionFromPoint?.(x, y);
+  if (!pos?.offsetNode) return null;
+  try {
+    const range = document.createRange();
+    range.setStart(pos.offsetNode, pos.offset);
+    range.collapse(true);
+    return range;
+  } catch {
+    return null;
+  }
+}
+
+function elementForRange(range) {
+  const node = range.commonAncestorContainer;
+  const element = node?.nodeType === 1 ? node : node?.parentElement;
+  if (!(element instanceof Element) || element === host || insideHost(element)) return null;
+  if (element === document.documentElement) return document.body;
+  return element;
+}
+
+function insideHost(node) {
+  const element = node?.nodeType === 1 ? node : node?.parentElement;
+  if (!(element instanceof Element)) return false;
+  return element === host || host.contains(element) || element.getRootNode?.() === shadow;
+}
+
+function paintTextHighlights(range) {
+  textLayer.replaceChildren();
+  if (!range) return;
+  let boxes = [];
+  try {
+    boxes = [...range.getClientRects()];
+  } catch {
+    boxes = [];
+  }
+  for (const box of boxes) {
+    if (box.width < 1 || box.height < 1) continue;
+    const mark = el("div", "text-hl");
+    mark.style.left = `${box.left}px`;
+    mark.style.top = `${box.top}px`;
+    mark.style.width = `${box.width}px`;
+    mark.style.height = `${box.height}px`;
+    textLayer.append(mark);
+  }
+}
+
+function paintQuoteBox(pageRect) {
+  textLayer.replaceChildren();
+  const mark = el("div", "text-hl");
+  mark.style.left = `${pageRect.x - window.scrollX}px`;
+  mark.style.top = `${pageRect.y - window.scrollY}px`;
+  mark.style.width = `${pageRect.width}px`;
+  mark.style.height = `${pageRect.height}px`;
+  textLayer.append(mark);
+}
+
+function clearTextHighlight() {
+  liveRange = null;
+  textLayer.replaceChildren();
+}
+
 function showCard(snapshot, rect, desc, detail) {
-  const existing = state.notes.find((note) => note.selector === snapshot.selector);
+  const existing = state.notes.find((note) => note.selector === snapshot.selector && (note.quote || "") === (snapshot.quote || ""));
   state.draft = snapshot;
   state.editingId = existing?.id || null;
   card.hidden = false;
   card.replaceChildren();
   const head = button("card-head");
   const chevron = el("span", "chev", "›");
-  head.append(
-    chevron,
-    el("span", "desc", desc),
-    el("span", "size", `${snapshot.box.width}×${snapshot.box.height}`),
-  );
+  head.append(chevron, el("span", "desc", desc));
+  if (!snapshot.quote) head.append(el("span", "size", `${snapshot.box.width}×${snapshot.box.height}`));
   head.title = detail || snapshot.selector;
   const code = el("div", "code code-float");
   code.hidden = true;
@@ -689,8 +892,14 @@ function showCard(snapshot, rect, desc, detail) {
   actions.append(cancel, save);
   card.append(head, code, field, actions);
   frame.classList.remove("dashed");
-  if (snapshot.rect) hideFrame();
-  else placeFrame(rect, String(existing?.number || state.notes.length + 1), "");
+  if (snapshot.quote) hideFrame();
+  else if (snapshot.rect) {
+    clearTextHighlight();
+    hideFrame();
+  } else {
+    clearTextHighlight();
+    placeFrame(rect, String(existing?.number || state.notes.length + 1), "");
+  }
   card.classList.toggle("for-region", Boolean(snapshot.rect));
   placeCard(rect);
   bindCardDrag(head);
@@ -765,11 +974,19 @@ function placeCardAt(left, top) {
 
 function closeCard() {
   card.hidden = true;
+  card.classList.remove("shake");
   card.replaceChildren();
   state.draft = null;
   state.editingId = null;
   state.cardRect = null;
   hideFrame();
+  clearTextHighlight();
+}
+
+function shakeCard() {
+  card.classList.remove("shake");
+  void card.offsetWidth;
+  card.classList.add("shake");
 }
 
 function placeFrame(rect, number, label) {
@@ -854,6 +1071,19 @@ function render() {
 }
 
 function openNote(note) {
+  if (note.quote) {
+    const rect = note.quoteRect
+      ? {
+          left: note.quoteRect.x - window.scrollX,
+          top: note.quoteRect.y - window.scrollY,
+          width: note.quoteRect.width,
+          height: note.quoteRect.height,
+        }
+      : { left: 24, top: 24, width: note.box.width, height: note.box.height };
+    if (note.quoteRect) paintQuoteBox(note.quoteRect);
+    showCard(note, rect, quoteLabel(note.text), note.selector);
+    return;
+  }
   if (note.rect) {
     const rect = {
       left: note.rect.x - window.scrollX,
@@ -879,6 +1109,7 @@ function regionLabel(note) {
 }
 
 function meta(note) {
+  if (note.quote) return "文字";
   if (note.rect) return `${note.rect.width}×${note.rect.height} · 区域`;
   return `${note.box.width}×${note.box.height} · ${note.tag}`;
 }
@@ -886,7 +1117,11 @@ function meta(note) {
 let pinFrame = 0;
 function schedulePins() {
   cancelAnimationFrame(pinFrame);
-  pinFrame = requestAnimationFrame(drawPins);
+  pinFrame = requestAnimationFrame(() => {
+    drawPins();
+    if (liveRange) paintTextHighlights(liveRange);
+    else if (!card.hidden && state.draft?.quote && state.draft.quoteRect) paintQuoteBox(state.draft.quoteRect);
+  });
 }
 
 function drawPins() {
@@ -894,6 +1129,15 @@ function drawPins() {
   if (state.collapsed) return;
   if (state.marksVisible) {
     for (const note of state.notes) {
+      if (note.quote && note.quoteRect) {
+        const pin = button("pin", String(note.number));
+        pin.style.position = "fixed";
+        pin.style.left = `${note.quoteRect.x - window.scrollX}px`;
+        pin.style.top = `${Math.max(4, note.quoteRect.y - window.scrollY - 8)}px`;
+        pin.addEventListener("click", () => openNote(note));
+        pinLayer.append(pin);
+        continue;
+      }
       if (note.rect) {
         pinLayer.append(regionBox(note.rect, { note, number: note.number }));
         continue;
@@ -1118,7 +1362,7 @@ function applyMcp() {
     mcpNote.textContent = "本机服务没启动。先在终端跑一次 pinedit-mcp。";
   } else if (!state.installed) {
     mcpNote.hidden = false;
-    mcpNote.textContent = "现在是从源码目录启动的。发布到 npm 后，这段 npx 配置换台机器也能直接用。";
+    mcpNote.textContent = "当前是从源码启动的。换一台机器时，用上面这段 npx 配置。";
   } else {
     mcpNote.hidden = true;
   }
@@ -1129,11 +1373,6 @@ async function handoff() {
     setStatus("还没有可交出去的标注。");
     return;
   }
-  const outgoing = state.notes.filter((note) => !note.sent);
-  if (outgoing.length === 0) {
-    setStatus("都已经交给 AI，记录还在，可以再复制。");
-    return;
-  }
   const pending = await api("GET", "/pending");
   if (!pending?.ok) {
     state.mcp = false;
@@ -1141,11 +1380,20 @@ async function handoff() {
     setStatus(contextGone(pending) ? "扩展刚更新过，刷新这个页面后再点一次。" : "本机服务没开，标注还留在页面上。");
     return;
   }
-  if (pending.body?.pending && !state.overwriteArmed) {
-    state.overwriteArmed = true;
-    setStatus("上一批还没被读取。再点一次会换掉它。");
+  const queued = pending.body?.pending;
+  const samePage = queued?.pageUrl === location.href;
+  const queuedSelectors = new Set(samePage ? queued.annotations.map((item) => item.selector) : []);
+  const outgoing = state.notes.filter((note) => !note.sent || queuedSelectors.has(note.selector));
+  if (outgoing.length === 0) {
+    setStatus("都已经交给 AI，记录还在，可以再复制。");
     return;
   }
+  if (queued && !samePage && !state.overwriteArmed) {
+    state.overwriteArmed = true;
+    setStatus("上一批是别的页面，还没被读取。再点一次会换掉它。");
+    return;
+  }
+  const carried = outgoing.some((note) => note.sent);
   const saved = await api("POST", "/batches", batchOf(outgoing));
   if (!saved?.ok) {
     setStatus(contextGone(saved) ? "扩展刚更新过，刷新这个页面后再点一次。" : "没交出去，标注还留在页面上。");
@@ -1158,7 +1406,8 @@ async function handoff() {
   render();
   const prompt = "按 PinEdit 的标注改";
   const copied = await copyText(prompt);
-  setStatus(copied ? "已交给 AI。提示已复制，贴进对话即可。" : "已交给 AI。提示没复制上。");
+  const handed = carried ? "已交给 AI，还没读取的也一起交了。" : "已交给 AI。";
+  setStatus(copied ? `${handed}提示已复制，贴进对话即可。` : `${handed}提示没复制上。`);
 }
 
 function batchOf(notes) {
@@ -1174,6 +1423,7 @@ function batchOf(notes) {
       tag: note.tag,
       text: note.text,
       box: note.box,
+      ...(note.quote ? { selected: true } : {}),
       ...(note.rect ? { rect: note.rect } : {}),
     })),
   };
@@ -1213,8 +1463,9 @@ function markdown(batch) {
     lines.push(
       `### ${note.number}. ${name}`,
       `**位置:** \`${note.selector}\``,
-      `**尺寸:** ${note.box.width}×${note.box.height}`,
+      ...(note.quote ? [] : [`**尺寸:** ${note.box.width}×${note.box.height}`]),
       `**意见:** ${note.comment || "（未写意见）"}`,
+      ...(note.quote ? ["**说明:** 改的是圈选的这段文字，不是整个元素。"] : []),
       ...(note.sent ? ["**状态:** 已交给 AI"] : []),
       "",
     );
@@ -1462,6 +1713,15 @@ function bindDrag(handle) {
 
 function cssLines(snapshot) {
   const box = snapshot.box;
+  if (snapshot.quote) {
+    const quote = snapshot.quote.length > 48 ? `${snapshot.quote.slice(0, 48)}…` : snapshot.quote;
+    return [
+      ["文字", quote],
+      ["字号", box.fontSize],
+      ["字重", box.fontWeight],
+      ["字色", hexColor(box.color)],
+    ];
+  }
   if (snapshot.rect) {
     return [
       ["位置", `(${snapshot.rect.x}, ${snapshot.rect.y})`],

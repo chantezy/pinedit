@@ -26,7 +26,8 @@ function noteLines(note) {
   return [
     `### ${note.number}. ${name}`,
     `**位置:** \`${note.selector}\``,
-    `**尺寸:** ${note.box.width}×${note.box.height}`,
+    ...(note.selected ? [] : [`**尺寸:** ${note.box.width}×${note.box.height}`]),
     `**意见:** ${note.comment || "（未写意见）"}`,
+    ...(note.selected ? ["**说明:** 改的是圈选的这段文字，不是整个元素。"] : []),
   ];
 }

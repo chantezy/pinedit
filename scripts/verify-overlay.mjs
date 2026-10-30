@@ -27,8 +27,13 @@ await page.addInitScript(() => {
         if (message.path === "/mcp-config") {
           return { ok: true, body: { ok: true, config: '{\n  "mcpServers": {\n    "pinedit": {\n      "command": "npx",\n      "args": ["-y", "pinedit-mcp"]\n    }\n  }\n}' } };
         }
-        if (message.path === "/pending") return { ok: true, body: { pending: null } };
-        if (message.path === "/batches") return { ok: true, body: { ok: true, replaced: false } };
+        if (message.path === "/pending") return { ok: true, body: { pending: globalThis.__PINEDIT_QUEUE || null } };
+        if (message.path === "/batches") {
+          globalThis.__PINEDIT_POSTS = globalThis.__PINEDIT_POSTS || [];
+          globalThis.__PINEDIT_POSTS.push(message.body);
+          globalThis.__PINEDIT_QUEUE = message.body;
+          return { ok: true, body: { ok: true, replaced: false } };
+        }
         if (message.path === "/health") return { ok: true, body: { ok: true } };
         return { ok: false, body: {} };
       },
@@ -134,6 +139,11 @@ if (await page.locator("#pinedit-click-probe").getAttribute("data-hit")) {
   throw new Error("标注时页面原来的点击不该生效");
 }
 if (!(await ui.locator(".card").isVisible())) throw new Error("点页面应该打开标注");
+await page.locator("#pinedit-click-probe").click();
+if (!(await ui.locator(".card").isVisible())) throw new Error("点空白不该关掉标注弹窗");
+if (!(await ui.locator(".card").evaluate((el) => el.classList.contains("shake")))) {
+  throw new Error("点空白应该让标注弹窗抖动");
+}
 await page.getByRole("button", { name: "取消" }).click();
 
 // 动画：有动画时可点，暂停后动画真的停
@@ -559,6 +569,19 @@ const closeAgain = await ui.locator('.dock .tool[aria-label="收起"]').bounding
 const backCenter = { x: closeAgain.x + closeAgain.width / 2, y: closeAgain.y + closeAgain.height / 2 };
 if (Math.hypot(backCenter.x - chipCenter.x, backCenter.y - chipCenter.y) > 4) {
   throw new Error(`展开后关闭键没回到悬浮按钮处: ${JSON.stringify({ chipBox, closeAgain })}`);
+}
+
+await page.locator("h1").click();
+await ui.locator("textarea").fill("再加一条");
+await page.getByRole("button", { name: "Pin" }).click();
+await ui.locator('.dock .tool[aria-label="发给 AI"]').click();
+await page.waitForFunction(() => {
+  const text = document.querySelector("pinedit-root")?.shadowRoot?.querySelector(".toast")?.textContent || "";
+  return text.includes("还没读取");
+});
+const merged = await page.evaluate(() => globalThis.__PINEDIT_POSTS.at(-1).annotations.map((item) => item.comment));
+if (merged.length !== 2 || !merged.includes("再加一条") || !merged.includes("这里加一条顶栏，高度按选的来")) {
+  throw new Error(`未读取的标注应该和新的一起交: ${JSON.stringify(merged)}`);
 }
 
 if (await ui.locator(".panel").isHidden()) await ui.locator('.dock .tool[aria-label="标注列表"]').click();

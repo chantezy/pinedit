@@ -55,5 +55,6 @@ fs.mkdirSync(root, { recursive: true });
 for (const size of [16, 32, 48, 128]) {
   fs.writeFileSync(path.join(root, `${size}.png`), png(size, pin));
 }
-fs.mkdirSync(path.resolve(import.meta.dirname, "../store"), { recursive: true });
-fs.writeFileSync(path.resolve(import.meta.dirname, "../store/logo-300.png"), png(300, pin));
+const websiteStore = path.resolve(import.meta.dirname, "../../website/store");
+fs.mkdirSync(websiteStore, { recursive: true });
+fs.writeFileSync(path.join(websiteStore, "logo-300.png"), png(300, pin));

@@ -1,12 +1,16 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { formatBatch } from "./format.js";
 import { completePending, getPending, putPending } from "./store.js";
+
+const { version } = createRequire(import.meta.url)("./package.json");
 
 export function listenPort() {
   return Number(process.env.PINEDIT_PORT || 4737);
@@ -18,6 +22,7 @@ const annotationSchema = z.object({
   selector: z.string().min(1).max(2000),
   tag: z.string().min(1).max(40),
   text: z.string().max(200),
+  selected: z.boolean().optional(),
   rect: z
     .object({
       x: z.number(),
@@ -132,7 +137,7 @@ export function mcpConfig() {
 }
 
 export function createMcp() {
-  const mcp = new McpServer({ name: "pinedit", version: "0.1.0" });
+  const mcp = new McpServer({ name: "pinedit", version });
   mcp.registerTool(
     "pinedit_get_pending",
     {
@@ -174,8 +179,17 @@ async function main() {
   await mcp.connect(new StdioServerTransport());
 }
 
-const entry = process.argv[1] || "";
-if (entry.endsWith("index.js")) {
+export function startedAsCli() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(fs.realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (startedAsCli()) {
   main().catch((error) => {
     console.error(error);
     process.exit(1);

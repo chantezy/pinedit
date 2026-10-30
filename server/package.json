@@ -1,7 +1,13 @@
 {
   "name": "pinedit-mcp",
-  "version": "0.1.0",
-  "description": "PinEdit 的本机 MCP 服务：读取浏览器里标好的页面元素和修改意见。",
+  "version": "0.1.5",
+  "description": "PinEdit 本机 MCP：读取浏览器标注（元素、圈选文字、选区）与修改意见。",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chantezy/pinedit.git",
+    "directory": "server"
+  },
+  "homepage": "https://github.com/chantezy/pinedit",
   "type": "module",
   "bin": {
     "pinedit-mcp": "./index.js"
@@ -9,7 +15,8 @@
   "files": [
     "index.js",
     "store.js",
-    "format.js"
+    "format.js",
+    "README.md"
   ],
   "keywords": [
     "mcp",

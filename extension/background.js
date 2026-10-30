@@ -12,7 +12,13 @@ chrome.action.onClicked.addListener(async (tab) => {
     await openDock(tab.id);
     await clearBadge(tab.id);
   } catch (error) {
-    await showBlocked(tab.id, "本地 html 请先到扩展详情勾选「允许访问文件网址」，再回到文件页点图标。");
+    const filePage = typeof tab.url === "string" && tab.url.startsWith("file:");
+    await showBlocked(
+      tab.id,
+      filePage
+        ? "本地 html 请先到扩展详情勾选「允许访问文件网址」，再回到文件页点图标。"
+        : "这一页没能打开标注。刷新页面后再点一次。",
+    );
     console.error("PinEdit", error);
   }
 });
@@ -35,17 +41,47 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function openDock(tabId) {
   try {
     await chrome.tabs.sendMessage(tabId, { type: "pinedit:toggle" });
+    return;
   } catch {
-    await chrome.scripting.executeScript({
+    /* 这一页还没有插件自己的脚本 */
+  }
+  if (await togglePageDock(tabId)) return;
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["overlay-css.js", "icon-src.js", "content.js"],
+  });
+  await chrome.tabs.sendMessage(tabId, { type: "pinedit:toggle" });
+}
+
+async function togglePageDock(tabId) {
+  try {
+    const [result] = await chrome.scripting.executeScript({
       target: { tabId },
-      files: ["overlay-css.js", "icon-src.js", "content.js"],
+      world: "MAIN",
+      func: () => {
+        const api = globalThis.__PINEDIT__;
+        if (typeof api?.activate === "function") {
+          api.activate();
+          return true;
+        }
+        if (typeof api?.toggle === "function") {
+          api.toggle();
+          return true;
+        }
+        return false;
+      },
     });
-    await chrome.tabs.sendMessage(tabId, { type: "pinedit:toggle" });
+    return Boolean(result?.result);
+  } catch {
+    return false;
   }
 }
 
 function clearBadge(tabId) {
-  return chrome.action.setBadgeText({ tabId, text: "" });
+  return Promise.all([
+    chrome.action.setBadgeText({ tabId, text: "" }),
+    chrome.action.setTitle({ tabId, title: "PinEdit" }),
+  ]);
 }
 
 async function showBlocked(tabId, title) {

@@ -1,8 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { completePending, getPending, putPending } from "./store.js";
 import { formatBatch } from "./format.js";
 import { startHttp } from "./index.js";
@@ -66,6 +68,21 @@ test("格式里以意见和元素描述为主", () => {
   assert.doesNotMatch(text, /\*\*内边距|\*\*字号|\*\*字色|\*\*底色|\*\*圆角/);
 });
 
+test("圈选文字会标明只改这段", () => {
+  const text = formatBatch({
+    ...sample,
+    annotations: [
+      {
+        ...sample.annotations[0],
+        text: "一年会员",
+        selected: true,
+      },
+    ],
+  });
+  assert.match(text, /「一年会员」/);
+  assert.match(text, /改的是圈选的这段文字，不是整个元素/);
+});
+
 test("区域标注能通过校验并写进格式", async () => {
   const region = {
     ...sample,
@@ -126,4 +143,53 @@ test("本机接口能收下一批", async () => {
   const pendingBody = await pending.json();
   assert.equal(pendingBody.pending.id, sample.id);
   server.close();
+});
+
+test("npx 的命令名不是 index.js 时也会启动", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "pinedit-bin-"));
+  const link = path.join(dir, "pinedit-mcp");
+  symlinkSync(fileURLToPath(new URL("./index.js", import.meta.url)), link);
+  const child = spawn(link, [], {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, PINEDIT_PORT: "0" },
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const line = await new Promise((resolve, reject) => {
+    let stdout = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`timeout stdout=${stdout} stderr=${stderr}`));
+    }, 8000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      const newline = stdout.indexOf("\n");
+      if (newline === -1) return;
+      clearTimeout(timer);
+      resolve(stdout.slice(0, newline));
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      reject(new Error(`exit ${code} stderr=${stderr}`));
+    });
+    child.stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "probe", version: "0" },
+        },
+      })}\n`,
+    );
+  });
+  child.kill();
+  rmSync(dir, { recursive: true, force: true });
+  const message = JSON.parse(line);
+  assert.equal(message.id, 1);
+  assert.equal(message.result.serverInfo.name, "pinedit");
 });

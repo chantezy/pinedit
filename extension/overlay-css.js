@@ -300,6 +300,18 @@ button { cursor: pointer; }
   z-index: 1;
 }
 .frame.dashed { border-style: dashed; }
+.text-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.text-hl {
+  position: fixed;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--mark) 32%, transparent);
+  pointer-events: none;
+}
 .region-layer {
   position: fixed;
   inset: 0;
@@ -430,6 +442,7 @@ button { cursor: pointer; }
   box-shadow: var(--float);
   animation: rise 180ms ease-out;
 }
+.card.shake { animation: shake 420ms ease; }
 .card-head {
   display: flex;
   align-items: center;
@@ -734,6 +747,13 @@ textarea:focus { outline: 1px solid var(--mark); }
 @keyframes rise {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .card { animation: none; }
