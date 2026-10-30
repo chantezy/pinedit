@@ -8,12 +8,10 @@
 
 | 目录 | 是什么 | 怎么给别人 |
 | --- | --- | --- |
-| `extension/` | Chrome / Edge 插件，压成 zip 上传商店 | 商店安装 |
-| `server/` | 本机 MCP 服务（包名 `pinedit-mcp`） | 发到 npm，用户用 `npx -y pinedit-mcp` |
+| `extension/` | Chrome / Edge 插件 | [Releases](https://github.com/chantezy/pinedit/releases) 或浏览器商店 |
+| `server/` | 本机 MCP（`pinedit-mcp`） | npm，`npx -y pinedit-mcp` |
 
-插件不依赖 npm 包；MCP 服务也可以直接从源码路径跑。发 npm 是为了别人不用克隆这个仓库。
-
-产品介绍与文档站单独维护，不在本仓库。本地与 `website/` 并列；公开可另建 `pinedit-website` 仓。
+官网与演示在并列的 `website/` 仓（或 `pinedit-website`）。
 
 ## 怎么用
 
@@ -82,19 +80,19 @@ cd server && npm start
 
 每条标注交给 AI 时，用元素自己的文字来称呼它，后面是位置、当前宽高和你的意见。圈选文字会多一行说明，只改引号里的那段。区域标注则是页面坐标、宽高和意见，表示这里要新加一块。上一批还没取走时，再发送会连同这批还没读取的一起交出去。代理读到之后调用 `pinedit_complete`，这批就从本机删掉。
 
-## 发版（Edge / 本地 zip / GitHub）
+## 发版
 
-**以后更新插件，只打包 `extension/` 目录**，不要带仓库里的其他文件夹。版本号改 `extension/manifest.json` 的 `version`，然后：
+**插件：** 改 `extension/manifest.json` 的 `version`，只打包 `extension/`：
 
 ```bash
 node scripts/package-extension.mjs
 ```
 
-默认会在 `../website/store/pinedit-<版本>.zip` 生成安装包（仅本地打包用；GitHub 用 Release 上传同名的 zip）。Edge 商店后台也是上传这一份 zip。
+zip 默认写到 `../website/store/pinedit-<版本>.zip`，同名文件挂到 GitHub Release。
 
-MCP 服务改在 `server/` 里发 npm：`cd server && npm publish`（先跑测试、改 `package.json` 版本）。
+**MCP：** 改 `server/` 并 push 到 `main`，CI 会跑测试、升 patch、发到 npm（Trusted Publisher）。细节见 `server/README.md`。
 
-用 npm 上的 `pinedit-mcp`。`-y` 用来跳过第一次安装确认，Cursor 拉起进程时没有地方输入 `y`：
+Cursor MCP 配置示例：
 
 ```json
 {
@@ -107,32 +105,4 @@ MCP 服务改在 `server/` 里发 npm：`cd server && npm publish`（先跑测�
 }
 ```
 
-改完服务发一版，各台机器重连 MCP 就会用到新包。
-
-服务读到的文本、两个工具和队列规则写在 `server/README.md`，也是 npm 页面上的说明。代理步骤在 `skills/pinedit/SKILL.md`。
-
-## Edge 附加商店
-
-**当前状态：** [Partner Center](https://partner.microsoft.com/dashboard/microsoftedge/public/login) 已提交 **0.1.1**，审核通过后商店会自动向已安装用户推送。本地 zip 与 GitHub Release 见上文「发版」。
-
-**下次改插件要上架时：**
-
-1. 改 `extension/manifest.json` 的版本号，执行 `node scripts/package-extension.mjs`。
-2. 把生成的 `pinedit-<版本>.zip` 上传到 Partner Center 新版本，并同步 [GitHub Releases](https://github.com/chantezy/pinedit/releases)（附件名与 manifest 一致）。
-3. 若改了 `description` 或权限，商店文案/隐私说明也要一起改，否则可能被拒。
-
-商店素材约定（首版已填过，大改时再核对）：
-
-- 图标：官网仓库 `store/logo-300.png`（300×300，`node scripts/make-icons.mjs` 会生成到那里）。
-- 截图：1280×800 或 640×480，最多 6 张。
-- 隐私政策：公网链接指向官网上的说明（源文件 `website/store/PRIVACY.md`）。
-- 合规要点：Manifest V3、单一用途（页面标注交给本机 AI）、无远程代码、数据仅本机 MCP；权限见下表。
-
-权限理由（Partner Center 可照抄）：
-
-| 权限 | 理由 |
-| --- | --- |
-| activeTab | 只在用户点工具栏图标时，进入当前标签页 |
-| scripting | 把标注层注入当前页 |
-| storage | 在发给 AI 之前，记住这一轮还没提交的标注 |
-| 127.0.0.1:4737 | 只把用户点过 PinEdit 按钮的那一批发给本机 MCP |
+代理步骤在 `skills/pinedit/SKILL.md`。
